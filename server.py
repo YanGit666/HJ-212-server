@@ -16,14 +16,22 @@ from hj212 import (
     CN_DAY_DATA, CN_MIX_DATA, CN_CALIB_DATA,
 )
 
+# 日志配置：控制台只显示警告及以上，详细日志写入文件
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.StreamHandler(),
+        logging.StreamHandler(),  # 控制台输出
         logging.FileHandler("hj212_server.log", encoding="utf-8"),
     ]
 )
+
+# 控制台只显示 WARNING 及以上级别，避免干扰 CLI 输入
+for handler in logging.root.handlers:
+    if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+        handler.setLevel(logging.WARNING)
+
+print("📝 详细日志已写入 hj212_server.log，控制台仅显示警告信息")
 log = logging.getLogger("HJ212")
 
 # ─────────────────────────────────────────
