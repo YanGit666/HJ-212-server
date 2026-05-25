@@ -1,0 +1,288 @@
+# hj212.py - HJ212-2017 协议解析与构建
+
+# ─────────────────────────────────────────
+# 命令码 (CN)
+# ─────────────────────────────────────────
+CN_HEARTBEAT      = "1000"   # 心跳
+CN_TIMESYNC       = "1011"   # 提取现场机时间
+CN_SET_TIME       = "1012"   # 设置现场机时间
+CN_REALTIME_DATA  = "2011"   # 实时数据（瞬时采样）
+CN_HOUR_DATA      = "2061"   # 小时数据
+CN_DAY_DATA       = "2031"   # 日数据
+CN_MIX_DATA       = "2063"   # 混合样数据
+CN_CALIB_DATA     = "2062"   # 自动标样核查数据
+CN_ACK            = "9011"   # 平台应答
+
+
+# ─────────────────────────────────────────
+# Flag 定义 (HJ212-2017)
+# Bit: V5 V4 V3 V2 V1 V0 D A
+# V1V0=10 → HJ212-2017
+# A=1     → 需要应答
+# 00001001 = 9
+# ─────────────────────────────────────────
+FLAG_NEED_ACK = 9    # 0b00001001: 2017版本 + 需要应答
+FLAG_NO_ACK   = 8    # 0b00001000: 2017版本 + 不需应答
+
+
+# ─────────────────────────────────────────
+# ST 定义
+# ─────────────────────────────────────────
+ST_DATA = "22"   # 地表水质自动监测站（数据上报）
+ST_CMD  = "32"   # 数采仪（系统命令）
+
+# 系统命令 CN 集合 → 使用 ST=32
+CMD_CN_SET = {
+    CN_TIMESYNC,       # 1011 提取现场机时间
+    CN_SET_TIME,       # 1012 设置现场机时间
+    CN_REALTIME_DATA,  # 2011 提取实时数据
+}
+
+
+# ─────────────────────────────────────────
+# 水质因子编码表
+# ─────────────────────────────────────────
+FACTOR_CODES = {
+    "w01010": ("水温",   "℃"),
+    "w01001": ("pH",     ""),
+    "w21003": ("氨氮",   "mg/L"),
+    "w01014": ("电导率", "μS/cm"),
+    "w01018": ("COD",    "mg/L"),
+    "w01003": ("浊度",   "NTU"),
+}
+
+FLAG_DESC = {
+    "N": "正常",
+    "T": "超标",
+    "F": "故障",
+    "D": "数据缺失",
+    "S": "手工输入",
+}
+
+CN_DESC = {
+    CN_HEARTBEAT:     "心跳",
+    CN_TIMESYNC:      "提取现场机时间",
+    CN_SET_TIME:      "设置现场机时间",
+    CN_REALTIME_DATA: "实时数据",
+    CN_HOUR_DATA:     "小时数据",
+    CN_DAY_DATA:      "日数据",
+    CN_MIX_DATA:      "混合样数据",
+    CN_CALIB_DATA:    "自动标样核查",
+    CN_ACK:           "平台应答",
+}
+
+
+# ─────────────────────────────────────────
+# CRC16 Modbus 查表
+# ─────────────────────────────────────────
+CRC_HI = [
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,
+    0x00,0xC1,0x81,0x40,0x01,0xC0,0x80,0x41,0x01,0xC0,0x80,0x41,0x00,0xC1,0x81,0x40,
+]
+
+CRC_LO = [
+    0x00,0xC0,0xC1,0x01,0xC3,0x03,0x02,0xC2,0xC6,0x06,0x07,0xC7,0x05,0xC5,0xC4,0x04,
+    0xCC,0x0C,0x0D,0xCD,0x0F,0xCF,0xCE,0x0E,0x0A,0xCA,0xCB,0x0B,0xC9,0x09,0x08,0xC8,
+    0xD8,0x18,0x19,0xD9,0x1B,0xDB,0xDA,0x1A,0x1E,0xDE,0xDF,0x1F,0xDD,0x1D,0x1C,0xDC,
+    0x14,0xD4,0xD5,0x15,0xD7,0x17,0x16,0xD6,0xD2,0x12,0x13,0xD3,0x11,0xD1,0xD0,0x10,
+    0xF0,0x30,0x31,0xF1,0x33,0xF3,0xF2,0x32,0x36,0xF6,0xF7,0x37,0xF5,0x35,0x34,0xF4,
+    0x3C,0xFC,0xFD,0x3D,0xFF,0x3F,0x3E,0xFE,0xFA,0x3A,0x3B,0xFB,0x39,0xF9,0xF8,0x38,
+    0x28,0xE8,0xE9,0x29,0xEB,0x2B,0x2A,0xEA,0xEE,0x2E,0x2F,0xEF,0x2D,0xED,0xEC,0x2C,
+    0xE4,0x24,0x25,0xE5,0x27,0xE7,0xE6,0x26,0x22,0xE2,0xE3,0x23,0xE1,0x21,0x20,0xE0,
+    0xA0,0x60,0x61,0xA1,0x63,0xA3,0xA2,0x62,0x66,0xA6,0xA7,0x67,0xA5,0x65,0x64,0xA4,
+    0x6C,0xAC,0xAD,0x6D,0xAF,0x6F,0x6E,0xAE,0xAA,0x6A,0x6B,0xAB,0x69,0xA9,0xA8,0x68,
+    0x78,0xB8,0xB9,0x79,0xBB,0x7B,0x7A,0xBA,0xBE,0x7E,0x7F,0xBF,0x7D,0xBD,0xBC,0x7C,
+    0xB4,0x74,0x75,0xB5,0x77,0xB7,0xB6,0x76,0x72,0xB2,0xB3,0x73,0xB1,0x71,0x70,0xB0,
+    0x50,0x90,0x91,0x51,0x93,0x53,0x52,0x92,0x96,0x56,0x57,0x97,0x55,0x95,0x94,0x54,
+    0x9C,0x5C,0x5D,0x9D,0x5F,0x9F,0x9E,0x5E,0x5A,0x9A,0x9B,0x5B,0x99,0x59,0x58,0x98,
+    0x88,0x48,0x49,0x89,0x4B,0x8B,0x8A,0x4A,0x4E,0x8E,0x8F,0x4F,0x8D,0x4D,0x4C,0x8C,
+    0x44,0x84,0x85,0x45,0x87,0x47,0x46,0x86,0x82,0x42,0x43,0x83,0x41,0x81,0x80,0x40,
+]
+
+def crc16(data: str) -> int:
+    """与 C 的 CRC16_Modbus 完全一致"""
+    hi = 0xFF
+    lo = 0xFF
+    for ch in data.encode("ascii"):
+        idx = hi ^ ch
+        hi  = lo ^ CRC_HI[idx]
+        lo  = CRC_LO[idx]
+    return (hi << 8) | lo
+
+
+# ─────────────────────────────────────────
+# 构建数据包
+# ─────────────────────────────────────────
+def build_packet(cn: str, cp_data: str, mn: str,
+                 qn: str = "", pw: str = "123456",
+                 st: str = "",
+                 flag: int = FLAG_NEED_ACK) -> str:
+    """
+    构建符合 HJ212-2017 的完整数据包
+    格式: ##LLLLQN=...;ST=...;CN=...;PW=...;MN=...;Flag=...;CP=&&...&&CCCC\r\n
+
+    ST 自动推导规则:
+      CN 在 CMD_CN_SET 中 → ST=32（系统命令，数采仪）
+      其他               → ST=22（数据上报）
+      手动传入 st        → 优先使用传入值
+    """
+    from datetime import datetime
+    if not qn:
+        qn = datetime.now().strftime("%Y%m%d%H%M%S") + "000"
+        
+    # ✅ ST 自动推导
+    if not st:
+        st = ST_CMD if cn in CMD_CN_SET else ST_DATA
+
+    data_area = (
+        f"QN={qn};"
+        f"ST={st};"
+        f"CN={cn};"
+        f"PW={pw};"
+        f"MN={mn};"
+        f"Flag={flag};"
+        f"CP=&&{cp_data}&&"
+    )
+    length = len(data_area)
+    crc    = crc16(data_area)
+    return f"##{length:04d}{data_area}{crc:04X}\r\n"
+
+
+# ─────────────────────────────────────────
+# 解析数据包
+# ─────────────────────────────────────────
+def parse_packet(raw: str) -> dict:
+    result = {"valid": False}
+    try:
+        if not raw.startswith("##"):
+            return result
+
+        length      = int(raw[2:6])
+        data_area   = raw[6: 6 + length]
+        recv_crc    = int(raw[6 + length: 6 + length + 4], 16)
+        calc_crc    = crc16(data_area)
+        
+        print(f"[CRC] 接收到的 CRC : 0x{recv_crc:04X} ({recv_crc})")
+        print(f"[CRC] 本地计算 CRC : 0x{calc_crc:04X} ({calc_crc})")
+        print(f"[CRC] 校验结果     : {'✅ 通过' if calc_crc == recv_crc else '❌ 失败'}")
+        
+        result["crc_ok"] = (calc_crc == recv_crc)
+
+        kv = {}
+        for part in data_area.split(";"):
+            if "=" in part and not part.startswith("CP="):
+                k, v = part.split("=", 1)
+                kv[k.strip()] = v.strip()
+
+        result["qn"]   = kv.get("QN",   "")
+        result["st"]   = kv.get("ST",   "")
+        result["cn"]   = kv.get("CN",   "")
+        result["pw"]   = kv.get("PW",   "")
+        result["mn"]   = kv.get("MN",   "")
+        result["flag"] = kv.get("Flag", "")
+
+        cp_start = data_area.find("CP=&&")
+        cp_end   = data_area.rfind("&&")
+        raw_cp   = ""
+        if cp_start != -1 and cp_end > cp_start + 4:
+            raw_cp = data_area[cp_start + 5: cp_end]
+
+        result["raw_cp"] = raw_cp
+        result["cp"]     = parse_cp(raw_cp)
+        result["valid"]  = True
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+# ─────────────────────────────────────────
+# 解析 CP 数据区
+# ─────────────────────────────────────────
+def parse_cp(cp_str: str) -> dict:
+    result = {"factors": {}}
+    for item in cp_str.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" in item and "-" not in item.split("=")[0]:
+            k, v = item.split("=", 1)
+            result[k.strip()] = v.strip()
+            continue
+        sub_items = item.split(",")
+        for sub in sub_items:
+            if "-" in sub and "=" in sub:
+                key, val = sub.split("=", 1)
+                if "-" in key:
+                    code, field = key.split("-", 1)
+                    code  = code.strip()
+                    field = field.strip()
+                    if code not in result["factors"]:
+                        result["factors"][code] = {}
+                    try:
+                        result["factors"][code][field] = float(val)
+                    except ValueError:
+                        result["factors"][code][field] = val.strip()
+    return result
+
+
+# ─────────────────────────────────────────
+# 构建平台请求应答包 (CN=9011)
+# 仅包含 QnRtn，用于应答现场机的数据上报/心跳等
+# ─────────────────────────────────────────
+def build_request_ack(mn: str, qn: str, pw: str = "123456", qn_rtn: int = 1) -> str:
+    cp = f"QN={qn};QnRtn={qn_rtn}"
+    return build_packet(CN_ACK, cp, mn, qn=qn, pw=pw, flag=FLAG_NO_ACK)
+
+
+# 保持兼容旧名称
+build_ack = build_request_ack
+
+
+# 构建执行结果包 (CN=9012) —— 现场机返回给上位机使用
+# 仅包含 ExeRtn
+# ─────────────────────────────────────────
+def build_exec_result(mn: str, qn: str, pw: str = "123456", exe_rtn: int = 1) -> str:
+    cp = f"QN={qn};ExeRtn={exe_rtn}"
+    return build_packet("9012", cp, mn, qn=qn, pw=pw, flag=FLAG_NO_ACK)
+
+
+# ─────────────────────────────────────────
+# 构建提取现场机时间指令
+# ─────────────────────────────────────────
+def build_get_time(mn: str, pw: str = "123456",
+                   pol_id: str = "") -> str:
+    """
+    pol_id 非空 → 提取对应仪表时间
+    pol_id 为空 → 提取数采仪本身时间
+    """
+    from datetime import datetime
+    qn     = datetime.now().strftime("%Y%m%d%H%M%S") + "000"
+    cp     = f"PolId={pol_id}" if pol_id else ""
+    return build_packet(CN_TIMESYNC, cp, mn, qn=qn, pw=pw, flag=FLAG_NEED_ACK)
+
+
+# ─────────────────────────────────────────
+# 构建设置现场机时间指令
+# ─────────────────────────────────────────
+def build_set_time(mn: str, pw: str = "123456") -> str:
+    from datetime import datetime
+    now = datetime.now()
+    qn  = now.strftime("%Y%m%d%H%M%S") + "000"
+    cp  = f"SystemTime={now.strftime('%Y%m%d%H%M%S')};"
+    return build_packet(CN_SET_TIME, cp, mn, qn=qn, pw=pw, flag=FLAG_NEED_ACK)
