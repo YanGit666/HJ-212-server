@@ -28,8 +28,14 @@ CN_EXEC_ACK     = "9012"   # 执行结果
 def _wait_cmd_response(dev: dict, expected_cn: str, timeout: float = 5.0) -> dict:
     """
     从 dev['cmd_queue'] 中取出报文，直到匹配 expected_cn 或超时。
-    非 expected_cn 的报文会被丢弃（按 HJ-212 流程，不应出现乱序）。
+    支持接收多个预期 CN（用于处理现场机可能先发其他包的情况）。
     """
+    # 支持单个 CN 或 CN 列表
+    if isinstance(expected_cn, str):
+        expected_cns = {expected_cn}
+    else:
+        expected_cns = set(expected_cn)
+    
     deadline = time.time() + timeout
     while time.time() < deadline:
         remaining = deadline - time.time()
@@ -44,10 +50,20 @@ def _wait_cmd_response(dev: dict, expected_cn: str, timeout: float = 5.0) -> dic
         result = parse_packet(line.strip())
         if not result.get("valid"):
             continue
-        if result.get("cn") == expected_cn:
+        
+        cn = result.get("cn")
+        if cn in expected_cns:
             return result
-        # 若收到其他 CN，视情况记录日志后丢弃
-        log.warning(f"  收到非预期 CN={result.get('cn')}，期望 {expected_cn}")
+        
+        # 忽略心跳和数据上报包（这些是正常的后台流量）
+        if cn in (CN_HEARTBEAT, CN_REALTIME_DATA, CN_HOUR_DATA,
+                  CN_DAY_DATA, CN_MIX_DATA, CN_CALIB_DATA):
+            log.debug(f"  忽略后台数据包 CN={cn}")
+            continue
+            
+        # 其他非预期包记录警告
+        log.warning(f"  收到非预期 CN={cn}，期望 {expected_cns}")
+        
     return {"valid": False, "error": "timeout"}
 
 
