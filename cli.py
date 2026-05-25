@@ -8,7 +8,11 @@ import logging
 from datetime import datetime
 
 from config import SERVER_HOST, SERVER_PORT, ALLOWED_DEVICES
-from hj212 import build_packet, parse_packet, crc16, CN_DESC
+from hj212 import (
+    build_packet, parse_packet, crc16, CN_DESC,
+    CN_HEARTBEAT, CN_REALTIME_DATA, CN_HOUR_DATA,
+    CN_DAY_DATA, CN_MIX_DATA, CN_CALIB_DATA,
+)
 
 log = logging.getLogger("HJ212.CLI")
 
