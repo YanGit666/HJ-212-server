@@ -1,5 +1,9 @@
 # hj212.py - HJ212-2017 协议解析与构建
 
+import logging
+
+log = logging.getLogger("HJ212.protocol")
+
 # ─────────────────────────────────────────
 # 命令码 (CN)
 # ─────────────────────────────────────────
@@ -176,9 +180,9 @@ def parse_packet(raw: str) -> dict:
         recv_crc    = int(raw[6 + length: 6 + length + 4], 16)
         calc_crc    = crc16(data_area)
         
-        print(f"[CRC] 接收到的 CRC : 0x{recv_crc:04X} ({recv_crc})")
-        print(f"[CRC] 本地计算 CRC : 0x{calc_crc:04X} ({calc_crc})")
-        print(f"[CRC] 校验结果     : {'✅ 通过' if calc_crc == recv_crc else '❌ 失败'}")
+        log.debug(f"[CRC] 接收到的 CRC : 0x{recv_crc:04X} ({recv_crc})")
+        log.debug(f"[CRC] 本地计算 CRC : 0x{calc_crc:04X} ({calc_crc})")
+        log.debug(f"[CRC] 校验结果     : {'✅ 通过' if calc_crc == recv_crc else '❌ 失败'}")
         
         result["crc_ok"] = (calc_crc == recv_crc)
 
