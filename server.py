@@ -94,13 +94,28 @@ def print_factor_data(mn: str, cp: dict, cn: str):
     has_exceed = False
     for code, info in factors.items():
         fname, unit = FACTOR_CODES.get(code, (code, ""))
-        rtd         = info.get("Rtd", info.get("Avg", "--"))
         flag        = str(info.get("Flag", "N"))
         fdesc       = FLAG_DESC.get(flag, flag)
         icon        = "⚠️ " if flag == "T" else ("❌ " if flag == "F" else "✅ ")
         if flag == "T":
             has_exceed = True
-        log.info(f"  ║  {icon} {fname:<8} {str(rtd):>10} {unit:<8} [{fdesc}]")
+        
+        # 检查是否有统计数据 (Min/Avg/Max) - 用于分钟/小时数据
+        min_val = info.get("Min")
+        avg_val = info.get("Avg")
+        max_val = info.get("Max")
+        rtd_val = info.get("Rtd")
+        
+        if min_val is not None and avg_val is not None and max_val is not None:
+            # 分钟/小时数据：显示 Min/Avg/Max
+            log.info(f"  ║  {icon} {fname:<8} Min={min_val:>8} Avg={avg_val:>8} Max={max_val:>8} {unit:<6} [{fdesc}]")
+        elif rtd_val is not None:
+            # 实时数据：显示 Rtd
+            log.info(f"  ║  {icon} {fname:<8} {str(rtd_val):>10} {unit:<8} [{fdesc}]")
+        else:
+            # 其他情况
+            val = rtd_val or avg_val or "--"
+            log.info(f"  ║  {icon} {fname:<8} {str(val):>10} {unit:<8} [{fdesc}]")
 
     log.info(f"  ╚══════════════════════════════════════════╝")
 
