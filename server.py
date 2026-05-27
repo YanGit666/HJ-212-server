@@ -12,7 +12,7 @@ from config import SERVER_HOST, SERVER_PORT, ALLOWED_DEVICES, HEARTBEAT_TIMEOUT
 from hj212 import (
     parse_packet, build_ack, build_set_time,
     FACTOR_CODES, FLAG_DESC, CN_DESC,
-    CN_HEARTBEAT, CN_REALTIME_DATA, CN_HOUR_DATA,
+    CN_HEARTBEAT, CN_REALTIME_DATA, CN_MINUTE_DATA, CN_HOUR_DATA,
     CN_DAY_DATA, CN_MIX_DATA, CN_CALIB_DATA,
 )
 
@@ -185,7 +185,7 @@ def handle_client(conn: socket.socket, addr):
                 if cn == CN_HEARTBEAT:
                     log.info(f"💓 心跳 MN={mn} QN={qn}")
 
-                elif cn in (CN_REALTIME_DATA, CN_HOUR_DATA,
+                elif cn in (CN_REALTIME_DATA, CN_MINUTE_DATA, CN_HOUR_DATA,
                             CN_DAY_DATA, CN_MIX_DATA, CN_CALIB_DATA):
                     print_factor_data(mn, cp, cn)
 

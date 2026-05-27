@@ -11,6 +11,7 @@ CN_HEARTBEAT      = "1000"   # 心跳
 CN_TIMESYNC       = "1011"   # 提取现场机时间
 CN_SET_TIME       = "1012"   # 设置现场机时间
 CN_REALTIME_DATA  = "2011"   # 实时数据（瞬时采样）
+CN_MINUTE_DATA    = "2051"   # 分钟数据
 CN_HOUR_DATA      = "2061"   # 小时数据
 CN_DAY_DATA       = "2031"   # 日数据
 CN_MIX_DATA       = "2063"   # 混合样数据
@@ -68,6 +69,7 @@ CN_DESC = {
     CN_TIMESYNC:      "提取现场机时间",
     CN_SET_TIME:      "设置现场机时间",
     CN_REALTIME_DATA: "实时数据",
+    CN_MINUTE_DATA:   "分钟数据",
     CN_HOUR_DATA:     "小时数据",
     CN_DAY_DATA:      "日数据",
     CN_MIX_DATA:      "混合样数据",
