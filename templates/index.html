@@ -457,6 +457,39 @@
         let allRecords = [];
         let currentFilter = 'all';
         const MAX_DISPLAY_RECORDS = 100;
+        const LOCAL_STORAGE_KEY = 'hj212_records';
+
+        // 从 LocalStorage 加载历史数据
+        function loadFromLocalStorage() {
+            try {
+                const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        console.log('💾 从本地存储加载:', parsed.length, '条记录');
+                        return parsed;
+                    }
+                }
+            } catch (e) {
+                console.warn('本地存储读取失败:', e);
+            }
+            return [];
+        }
+
+        // 保存到 LocalStorage
+        function saveToLocalStorage() {
+            try {
+                // 只保存最近 200 条到本地存储
+                const toSave = allRecords.slice(0, 200);
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
+            } catch (e) {
+                console.warn('本地存储保存失败:', e);
+                // 如果存储失败（如空间不足），清除旧数据
+                if (e.name === 'QuotaExceededError') {
+                    localStorage.removeItem(LOCAL_STORAGE_KEY);
+                }
+            }
+        }
 
         // 数据类型映射
         const DATA_TYPE_NAMES = {
@@ -503,7 +536,14 @@
 
             socket.on('initial_data', function(records) {
                 console.log('📦 收到初始数据:', records.length, '条');
-                allRecords = records;
+                // 合并数据：保留本地已有数据，添加服务器返回的新数据（避免重复）
+                const existingIds = new Set(allRecords.map(r => r.id));
+                const newRecords = records.filter(r => !existingIds.has(r.id));
+                allRecords = [...newRecords, ...allRecords];
+                // 限制记录数量
+                if (allRecords.length > MAX_DISPLAY_RECORDS) {
+                    allRecords = allRecords.slice(0, MAX_DISPLAY_RECORDS);
+                }
                 renderTable();
             });
 
@@ -548,6 +588,9 @@
                 allRecords = allRecords.slice(0, MAX_DISPLAY_RECORDS);
             }
             renderTable();
+
+            // 保存到本地存储
+            saveToLocalStorage();
 
             // 请求最新统计
             socket.emit('request_data', { type: null, limit: 1 });
@@ -685,6 +728,13 @@
 
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
+            // 先从本地存储加载历史数据
+            allRecords = loadFromLocalStorage();
+            if (allRecords.length > 0) {
+                renderTable();
+                console.log('💾 已加载本地历史数据:', allRecords.length, '条');
+            }
+            // 然后连接 WebSocket
             initSocket();
         });
     </script>
