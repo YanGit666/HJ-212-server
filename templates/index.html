@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HJ-212 水质监测数据平台</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+            color: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 500;
+        }
+
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card.active {
+            border: 2px solid #1890ff;
+            background: #e6f7ff;
+        }
+
+        .stat-card .label {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1890ff;
+        }
+
+        /* 连接状态 */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #52c41a;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background: #ff4d4f;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 工具栏 */
+        .toolbar {
+            background: white;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 6px 16px;
+            border: 1px solid #d9d9d9;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            border-color: #1890ff;
+            color: #1890ff;
+        }
+
+        .filter-btn.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+
+        .clear-btn {
+            padding: 6px 16px;
+            border: 1px solid #ff4d4f;
+            background: white;
+            color: #ff4d4f;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .clear-btn:hover {
+            background: #ff4d4f;
+            color: white;
+        }
+
+        /* 数据表格 */
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .table-wrapper {
+            max-height: calc(100vh - 350px);
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead {
+            background: #fafafa;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #e8e8e8;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: top;
+        }
+
+        tbody tr:hover {
+            background: #f6ffed;
+        }
+
+        tbody tr.new-row {
+            animation: highlight 2s ease-out;
+        }
+
+        @keyframes highlight {
+            0% { background: #fff7e6; }
+            100% { background: transparent; }
+        }
+
+        /* 数据类型标签 */
+        .data-type-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .type-realtime {
+            background: #e6f7ff;
+            color: #096dd9;
+        }
+
+        .type-minute {
+            background: #f6ffed;
+            color: #389e0d;
+        }
+
+        .type-hour {
+            background: #fff7e6;
+            color: #d46b08;
+        }
+
+        .type-day {
+            background: #f9f0ff;
+            color: #722ed1;
+        }
+
+        .type-mix {
+            background: #fff2f0;
+            color: #cf1322;
+        }
+
+        .type-calib {
+            background: #e6fffb;
+            color: #08979c;
+        }
+
+        /* 监测因子值 */
+        .factor-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .factor-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .factor-name {
+            color: #666;
+            min-width: 50px;
+        }
+
+        .factor-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .factor-unit {
+            color: #999;
+            font-size: 11px;
+        }
+
+        .factor-flag {
+            font-size: 11px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+
+        .flag-normal {
+            background: #f6ffed;
+            color: #52c41a;
+        }
+
+        .flag-exceed {
+            background: #fff2f0;
+            color: #ff4d4f;
+        }
+
+        .flag-fault {
+            background: #fff7e6;
+            color: #faad14;
+        }
+
+        /* 统计值显示 */
+        .stats-value {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: #f6ffed;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .stat-item .label {
+            color: #666;
+            margin-right: 4px;
+        }
+
+        .stat-item .value {
+            color: #389e0d;
+            font-weight: 600;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .header {
+                padding: 15px 20px;
+            }
+
+            .container {
+                padding: 10px;
+            }
+
+            .table-wrapper {
+                max-height: calc(100vh - 280px);
+            }
+
+            th, td {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌊 HJ-212 水质监测数据平台</h1>
+        <div class="subtitle">实时接收与展示水质监测数据</div>
+    </div>
+
+    <div class="container">
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card" data-type="all">
+                <div class="label">总记录数</div>
+                <div class="value" id="total-count">0</div>
+            </div>
+            <div class="stat-card" data-type="realtime">
+                <div class="label">实时数据</div>
+                <div class="value" id="realtime-count">0</div>
+            </div>
+            <div class="stat-card" data-type="minute">
+                <div class="label">分钟数据</div>
+                <div class="value" id="minute-count">0</div>
+            </div>
+            <div class="stat-card" data-type="hour">
+                <div class="label">小时数据</div>
+                <div class="value" id="hour-count">0</div>
+            </div>
+            <div class="stat-card" data-type="day">
+                <div class="label">日数据</div>
+                <div class="value" id="day-count">0</div>
+            </div>
+            <div class="stat-card" data-type="mix">
+                <div class="label">混合样数据</div>
+                <div class="value" id="mix-count">0</div>
+            </div>
+            <div class="stat-card" data-type="calib">
+                <div class="label">标样核查</div>
+                <div class="value" id="calib-count">0</div>
+            </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <div class="filter-group">
+                <button class="filter-btn active" data-filter="all">全部</button>
+                <button class="filter-btn" data-filter="realtime">实时数据</button>
+                <button class="filter-btn" data-filter="minute">分钟数据</button>
+                <button class="filter-btn" data-filter="hour">小时数据</button>
+                <button class="filter-btn" data-filter="day">日数据</button>
+                <button class="filter-btn" data-filter="mix">混合样数据</button>
+                <button class="filter-btn" data-filter="calib">标样核查</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="connection-status">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span id="status-text">已连接</span>
+                </div>
+                <button class="clear-btn" onclick="clearData()">清空数据</button>
+            </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="table-container">
+            <div class="table-wrapper">
+                <table id="data-table">
+                    <thead>
+                        <tr>
+                            <th>接收时间</th>
+                            <th>数据时间</th>
+                            <th>设备MN</th>
+                            <th>设备名称</th>
+                            <th>数据类型</th>
+                            <th>监测因子数据</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr>
+                            <td colspan="6" class="empty-state">
+                                <div class="icon">📭</div>
+                                <div>暂无数据，等待设备上报...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let socket;
+        let allRecords = [];
+        let currentFilter = 'all';
+        const MAX_DISPLAY_RECORDS = 100;
+
+        // 数据类型映射
+        const DATA_TYPE_NAMES = {
+            'realtime': '实时数据',
+            'minute': '分钟数据',
+            'hour': '小时数据',
+            'day': '日数据',
+            'mix': '混合样数据',
+            'calib': '自动标样核查'
+        };
+
+        // 因子名称映射
+        const FACTOR_NAMES = {
+            'w01010': '水温',
+            'w01001': 'pH',
+            'w21003': '氨氮',
+            'w01014': '电导率',
+            'w01018': 'COD',
+            'w01003': '浊度'
+        };
+
+        // 标志位描述
+        const FLAG_DESC = {
+            'N': '正常',
+            'T': '超标',
+            'F': '故障',
+            'D': '缺失',
+            'S': '手工'
+        };
+
+        // 初始化连接
+        function initSocket() {
+            socket = io('/hj212');
+
+            socket.on('connect', function() {
+                console.log('✅ WebSocket 已连接');
+                updateConnectionStatus(true);
+            });
+
+            socket.on('disconnect', function() {
+                console.log('❌ WebSocket 已断开');
+                updateConnectionStatus(false);
+            });
+
+            socket.on('initial_data', function(records) {
+                console.log('📦 收到初始数据:', records.length, '条');
+                allRecords = records;
+                renderTable();
+            });
+
+            socket.on('new_data', function(record) {
+                console.log('📊 收到新数据:', record);
+                addRecord(record);
+            });
+
+            socket.on('stats', function(stats) {
+                updateStats(stats);
+            });
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            if (connected) {
+                dot.classList.remove('disconnected');
+                text.textContent = '已连接';
+            } else {
+                dot.classList.add('disconnected');
+                text.textContent = '已断开';
+            }
+        }
+
+        // 更新统计信息
+        function updateStats(stats) {
+            document.getElementById('total-count').textContent = stats.total_count || 0;
+            document.getElementById('realtime-count').textContent = stats.realtime_count || 0;
+            document.getElementById('minute-count').textContent = stats.minute_count || 0;
+            document.getElementById('hour-count').textContent = stats.hour_count || 0;
+            document.getElementById('day-count').textContent = stats.day_count || 0;
+            document.getElementById('mix-count').textContent = stats.mix_count || 0;
+            document.getElementById('calib-count').textContent = stats.calib_count || 0;
+        }
+
+        // 添加新记录
+        function addRecord(record) {
+            allRecords.unshift(record);
+            if (allRecords.length > MAX_DISPLAY_RECORDS) {
+                allRecords = allRecords.slice(0, MAX_DISPLAY_RECORDS);
+            }
+            renderTable();
+
+            // 请求最新统计
+            socket.emit('request_data', { type: null, limit: 1 });
+        }
+
+        // 清空数据
+        function clearData() {
+            allRecords = [];
+            renderTable();
+        }
+
+        // 获取标志位样式
+        function getFlagClass(flag) {
+            if (flag === 'T') return 'flag-exceed';
+            if (flag === 'F') return 'flag-fault';
+            return 'flag-normal';
+        }
+
+        // 渲染因子数据
+        function renderFactors(record) {
+            const factors = record.factors || {};
+            const factorKeys = Object.keys(factors);
+
+            if (factorKeys.length === 0) {
+                return '<span style="color: #999;">无数据</span>';
+            }
+
+            let html = '<div class="factor-cell">';
+            
+            factorKeys.forEach(code => {
+                const factor = factors[code];
+                const name = factor.name || FACTOR_NAMES[code] || code;
+                const unit = factor.unit || '';
+                const flag = factor.flag || 'N';
+                const flagClass = getFlagClass(flag);
+                const flagText = FLAG_DESC[flag] || flag;
+
+                html += '<div class="factor-row">';
+                html += `<span class="factor-name">${name}:</span>`;
+
+                if (factor.display_type === 'min_max') {
+                    // 分钟/小时数据：显示 Min/Avg/Max
+                    html += '<div class="stats-value">';
+                    html += `<span class="stat-item"><span class="label">Min:</span><span class="value">${factor.min || '--'}</span></span>`;
+                    html += `<span class="stat-item"><span class="label">Avg:</span><span class="value">${factor.avg || '--'}</span></span>`;
+                    html += `<span class="stat-item"><span class="label">Max:</span><span class="value">${factor.max || '--'}</span></span>`;
+                    html += `<span class="factor-unit">${unit}</span>`;
+                    html += `<span class="factor-flag ${flagClass}">${flagText}</span>`;
+                    html += '</div>';
+                } else {
+                    // 实时数据：显示 Rtd
+                    const value = factor.rtd !== undefined ? factor.rtd : (factor.avg || '--');
+                    html += `<span class="factor-value">${value}</span>`;
+                    html += `<span class="factor-unit">${unit}</span>`;
+                    html += `<span class="factor-flag ${flagClass}">${flagText}</span>`;
+                }
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            return html;
+        }
+
+        // 渲染表格
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+
+            // 过滤数据
+            let filteredRecords = allRecords;
+            if (currentFilter !== 'all') {
+                filteredRecords = allRecords.filter(r => r.data_type === currentFilter);
+            }
+
+            if (filteredRecords.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <div class="icon">📭</div>
+                            <div>${currentFilter === 'all' ? '暂无数据，等待设备上报...' : '该类型暂无数据'}</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            let html = '';
+            filteredRecords.forEach((record, index) => {
+                const isNew = index === 0 && currentFilter === 'all';
+                const rowClass = isNew ? 'new-row' : '';
+                const typeClass = `type-${record.data_type}`;
+                const typeName = DATA_TYPE_NAMES[record.data_type] || record.data_type_desc;
+
+                html += `<tr class="${rowClass}">`;
+                html += `<td>${record.timestamp}</td>`;
+                html += `<td>${record.data_time || '-'}</td>`;
+                html += `<td style="font-family: monospace; font-size: 12px;">${record.mn}</td>`;
+                html += `<td>${record.device_name}</td>`;
+                html += `<td><span class="data-type-tag ${typeClass}">${typeName}</span></td>`;
+                html += `<td>${renderFactors(record)}</td>`;
+                html += '</tr>';
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // 筛选按钮事件
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentFilter = this.dataset.filter;
+                renderTable();
+            });
+        });
+
+        // 统计卡片点击事件
+        document.querySelectorAll('.stat-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const type = this.dataset.type;
+                currentFilter = type;
+
+                // 更新按钮状态
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.filter === type);
+                });
+
+                // 更新卡片选中状态
+                document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+
+                renderTable();
+            });
+        });
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initSocket();
+        });
+    </script>
+</body>
+</html>

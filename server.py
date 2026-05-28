@@ -8,7 +8,7 @@ import queue
 from datetime import datetime
 from cli import HJ212CLI
 
-from config import SERVER_HOST, SERVER_PORT, ALLOWED_DEVICES, HEARTBEAT_TIMEOUT
+from config import SERVER_HOST, SERVER_PORT, WEB_HOST, WEB_PORT, ALLOWED_DEVICES, HEARTBEAT_TIMEOUT
 from hj212 import (
     parse_packet, build_ack, build_set_time,
     FACTOR_CODES, FLAG_DESC, CN_DESC,
@@ -33,6 +33,42 @@ for handler in logging.root.handlers:
 
 print("📝 详细日志已写入 hj212_server.log，控制台仅显示警告信息")
 log = logging.getLogger("HJ212")
+
+# ─────────────────────────────────────────
+# Web 服务器集成（用于前端显示）
+# ─────────────────────────────────────────
+WEB_SERVER_ENABLED = False
+add_record_func = None
+
+def init_web_server():
+    """初始化 Web 服务器"""
+    global WEB_SERVER_ENABLED, add_record_func
+    try:
+        from web_server import add_record, start_web_server
+        add_record_func = add_record
+        WEB_SERVER_ENABLED = True
+        # 在后台线程启动 Web 服务器
+        threading.Thread(
+            target=start_web_server,
+            args=(WEB_HOST, WEB_PORT, False),
+            daemon=True
+        ).start()
+        log.info(f"✅ Web 服务器已启动: http://{WEB_HOST}:{WEB_PORT}")
+        log.info(f"   访问地址: http://<云服务器公网IP>:{WEB_PORT}")
+        log.info(f"   本地访问: http://127.0.0.1:{WEB_PORT}")
+    except ImportError as e:
+        log.warning(f"⚠️ Web 服务器模块导入失败: {e}")
+    except Exception as e:
+        log.error(f"❌ Web 服务器启动失败: {e}")
+
+def send_to_web(cn: str, mn: str, cp: dict):
+    """发送数据到 Web 服务器（前端显示）"""
+    if WEB_SERVER_ENABLED and add_record_func:
+        try:
+            device_name = ALLOWED_DEVICES.get(mn, "未知设备")
+            add_record_func(cn, mn, device_name, cp)
+        except Exception as e:
+            log.debug(f"发送数据到 Web 服务器失败: {e}")
 
 # ─────────────────────────────────────────
 # 在线设备表
@@ -77,6 +113,9 @@ def print_factor_data(mn: str, cp: dict, cn: str):
     # 混合样数据：提取采样时段
     begin_time = cp.get("BeginTime", "")
     end_time   = cp.get("EndTime", "")
+
+    # 发送到 Web 服务器（前端显示）
+    send_to_web(cn, mn, cp)
 
     log.info("")
     log.info(f"  ╔══════════════════════════════════════════╗")
@@ -270,6 +309,9 @@ def status_reporter():
 def main():
     log.info(f"🌊 HJ212-2017 模拟服务器启动  {SERVER_HOST}:{SERVER_PORT}")
     log.info(f"   允许设备: {list(ALLOWED_DEVICES.keys())}")
+
+    # 启动 Web 服务器（用于前端显示）
+    init_web_server()
 
     threading.Thread(target=status_reporter, daemon=True).start()
 
